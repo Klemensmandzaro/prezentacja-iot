@@ -35,6 +35,17 @@ async function poll(){
 function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;draw()}
 function reset(){if(confirm('Usunąć wszystkich graczy i wyniki?'))sb.rpc('host_reset',{p_pin:pin}).then(poll)}
 function board(n){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}</b></div>`).join('')}
+let adminOpen=false,clearOn=true;
+function groups(){const g=[];Q.forEach(q=>{const k=/Warsztat/.test(q.mission)?'🎮 Warsztat: kabelki i wyświetlacz':q.mission;const l=g[g.length-1];if(l&&l.name===k)l.qs.push(q.id);else g.push({name:k,qs:[q.id]})});return g}
+async function jump(q){if(q==null)return;if(clearOn)await sb.rpc('host_clear_q',{p_pin:pin,p_q:q});await set('question',q)}
+function stageBar(){const G=groups(),n=game.current_q,gi=G.findIndex(g=>g.qs.includes(n));
+ return `<p class="mut" style="margin:0">${game.state==='lobby'?'Poczekalnia':game.state==='final'?'Koniec gry':`Etap ${gi+1}/${G.length} · ${esc(G[gi]?.name||'')} · pytanie ${n}/${Q.length}`}</p>`}
+function adminPanel(){const G=groups(),n=game.current_q,st=game.state,gi=G.findIndex(g=>g.qs.includes(n));
+ const nav=(l,f,d)=>`<button style="background:transparent;color:var(--txt);padding:8px 12px" ${d?'disabled':''} onclick="${f}">${l}</button>`;
+ const rows=G.map((g,i)=>`<div style="margin:8px 0"><div class="mut" style="font-size:.8em">${i+1}. ${esc(g.name)}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${g.qs.map(q=>`<button style="padding:6px 12px;${q===n&&st!=='lobby'?'':'background:transparent;color:var(--txt)'}" onclick="jump(${q})">${q}</button>`).join('')}</div></div>`).join('');
+ return `<details class="card" ${adminOpen?'open':''} ontoggle="adminOpen=this.open"><summary>🧭 Panel admina – skocz do etapu</summary>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">${nav('⏮ Poczekalnia',"set('lobby',0)")}${nav('◀ Poprzedni etap',`jump(${G[gi-1]?.qs[0]})`,gi<1)}${nav('Następny etap ▶',`jump(${G[gi+1]?.qs[0]})`,gi>=G.length-1)}${nav('🏁 Ranking końcowy',`set('final',${Q.length})`)}</div>
+ <label class="mut"><input type="checkbox" ${clearOn?'checked':''} onchange="clearOn=this.checked"> Przy skoku wyczyść odpowiedzi i punkty z tego pytania (do testów)</label>${rows}</details>`}
 function draw(){
   if(!pin){$.innerHTML=`<div class="card"><h1>Panel prowadzącego</h1><input id="p" type="password" placeholder="PIN"> <button onclick="login()">Wejdź</button></div>`;return}
   if(!game)return;
@@ -56,7 +67,8 @@ function draw(){
     sb.rpc('get_explanation',{p_q:n}).then(r=>{const e=document.getElementById('ex');if(e)e.textContent=r.data||''});
     sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
   else main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div>`;
-  $.innerHTML=main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
+  $.innerHTML=stageBar()+main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
+  $.innerHTML+=adminPanel();
   const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});
 }
 (async()=>{Q=(await sb.from('questions').select('*').order('id')).data||[];await poll();draw();setInterval(poll,1500)})();

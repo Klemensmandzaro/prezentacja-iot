@@ -6,7 +6,7 @@
 <script>
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
-let seq=[],ms=[],mp=[],wr=[],wl=0;
+let sentAt={},seq=[],ms=[],mp=[],wr=[],wl=0;
 let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function init(){
@@ -66,7 +66,7 @@ function kindUI(Q,s){if(s!==undefined)return '';const k=Q.kind;
  return ''}
 const q=()=>Q.find(x=>x.id===game.current_q);
 function render(){
-  const k=!pid?'join':game.state+game.current_q;
+  const k=!pid?'join':game.state+game.current_q+game.q_started_at;
   if(k===key)return;key=k;seq=[];ms=[];mp=[];wr=[];wl=0;draw();
 }
 async function draw(){
@@ -78,6 +78,7 @@ async function draw(){
   if(st==='lobby'){$.innerHTML=`<div class="card"><h2>Cześć, <span class="acc">${esc(nick)}</span>!</h2><p class="mut">Jesteś w grze. Czekaj na start od prowadzącego…</p></div>`;return}
   const Qq=q();
   if(st==='question'&&Qq){
+    if(sentAt[Qq.id]!==game.q_started_at){delete sent[Qq.id];sentAt[Qq.id]=game.q_started_at}
     const s=sent[Qq.id];
     $.innerHTML=`<div class="card"><div class="mut">${esc(Qq.mission)} · <b id="t"></b> s</div><h2>${esc(Qq.prompt)}</h2></div>
     ${Qq.kind!=='choice'?kindUI(Qq,s):`<div class="opts">${Qq.options.map((o,i)=>`<button class="o${i} ${s!==undefined&&s!==i?'dim':''}" ${s!==undefined?'disabled':''} onclick="answer(${i})">${esc(o)}</button>`).join('')}</div>`}
