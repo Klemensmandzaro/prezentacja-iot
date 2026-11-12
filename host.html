@@ -9,6 +9,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
 let pin=sessionStorage.pin||'',game,Q=[],rows=[],cnt=0,key='';
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ctext=(Q,c)=>Q.kind==='order'?String(c).split('').map(d=>Q.options[d-1]).join(' → '):(Q.options[c]??'');
 const joinUrl=new URL('index.html',location.href).href;
 async function set(state,n){
   const r=await sb.rpc('host_set',{p_pin:pin,p_state:state,p_q:n});
@@ -43,7 +44,7 @@ function draw(){
     main=`<div class="card"><div class="mut">${esc(Qq.mission)}</div><h2>${esc(Qq.prompt)}</h2><div class="opts" id="o"></div></div>
     <div class="card"><h2>🏆 Top 10</h2>${board(10)}</div>`;
     btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
-    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
+    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind==='order'?'<p class="big acc" style="grid-column:1/3">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
   else main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div>`;
   $.innerHTML=main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
   const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});

@@ -6,6 +6,7 @@
 <script>
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
+let seq=[];
 let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function init(){
@@ -26,10 +27,15 @@ async function answer(i){
   sent[game.current_q]=i;draw();
   await sb.rpc('submit_answer',{p_player:pid,p_q:game.current_q,p_choice:i});
 }
+const ctext=(Q,c)=>Q.kind==='order'?String(c).split('').map(d=>Q.options[d-1]).join(' → '):(Q.options[c]??'');
+function tap(i){if(!seq.includes(i)){seq.push(i);draw()}}
+function ordUI(Q,s){if(s!==undefined)return '';
+return `<p class="mut">Stukaj od pierwszego do ostatniego kroku:</p><div class="opts" style="grid-template-columns:1fr">${Q.options.map((o,i)=>{const p=seq.indexOf(i);return `<button class="o${i%4}" style="min-height:56px;padding:12px" ${p>=0?'disabled':''} onclick="tap(${i})">${p>=0?'<b>'+(p+1)+'.</b> ':''}${esc(o)}</button>`}).join('')}</div>
+<p style="display:flex;gap:10px"><button style="background:transparent;color:var(--txt)" onclick="seq=[];draw()">Wyczyść</button><button style="flex:1" ${seq.length<Q.options.length?'disabled':''} onclick="answer(+seq.map(i=>i+1).join(''))">Wyślij</button></p>`}
 const q=()=>Q.find(x=>x.id===game.current_q);
 function render(){
   const k=!pid?'join':game.state+game.current_q;
-  if(k===key)return;key=k;draw();
+  if(k===key)return;key=k;seq=[];draw();
 }
 async function draw(){
   if(!game)return;
@@ -42,13 +48,13 @@ async function draw(){
   if(st==='question'&&Qq){
     const s=sent[Qq.id];
     $.innerHTML=`<div class="card"><div class="mut">${esc(Qq.mission)} · <b id="t"></b> s</div><h2>${esc(Qq.prompt)}</h2></div>
-    <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i} ${s!==undefined&&s!==i?'dim':''}" ${s!==undefined?'disabled':''} onclick="answer(${i})">${esc(o)}</button>`).join('')}</div>
+    ${Qq.kind==='order'?ordUI(Qq,s):`<div class="opts">${Qq.options.map((o,i)=>`<button class="o${i} ${s!==undefined&&s!==i?'dim':''}" ${s!==undefined?'disabled':''} onclick="answer(${i})">${esc(o)}</button>`).join('')}</div>`}
     ${s!==undefined?'<p class="mut" style="text-align:center">Odpowiedź wysłana. Czekaj na wynik…</p>':''}`;tick();return}
   if(st==='results'&&Qq){
     const [c,m,lb]=await Promise.all([sb.rpc('get_correct',{p_q:Qq.id}),sb.rpc('get_my_result',{p_player:pid,p_q:Qq.id}),sb.from('leaderboard').select('*')]);
     const my=m.data||{},rows=lb.data||[],rank=rows.findIndex(r=>r.nick===nick)+1,me=rows[rank-1];
     $.innerHTML=`<div class="card" style="text-align:center"><div class="big">${my.points>0?'✅ Dobrze!':(my.choice==null?'⏱ Brak odpowiedzi':'❌ Błąd')}</div>
-    <p>Poprawna: <b class="acc">${esc(Qq.options[c.data]??'')}</b></p><p class="big acc">+${my.points||0} pkt</p>
+    <p>Poprawna: <b class="acc">${esc(ctext(Qq,c.data))}</b></p><p class="big acc">+${my.points||0} pkt</p>
     <p>Masz <b>${me?me.score:0}</b> pkt · miejsce <b>${rank||'-'}</b> z ${rows.length}</p></div>`;return}
   if(st==='final'){
     const rows=(await sb.from('leaderboard').select('*')).data||[],rank=rows.findIndex(r=>r.nick===nick)+1;
