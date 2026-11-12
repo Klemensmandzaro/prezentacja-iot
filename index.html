@@ -1,0 +1,61 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>IoT Challenge</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script></head><body><div class="wrap" id="app"></div>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=document.getElementById('app');
+let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function init(){
+  Q=(await sb.from('questions').select('*').order('id')).data||[];
+  await load();
+  sb.channel('g').on('postgres_changes',{event:'*',schema:'public',table:'game'},p=>{game=p.new;render()}).subscribe();
+  setInterval(load,3000);setInterval(tick,250);
+}
+async function load(){const r=await sb.from('game').select('*').single();if(r.data){game=r.data;render()}}
+async function join(){
+  const n=document.getElementById('n').value.trim();
+  const r=await sb.rpc('join_game',{p_nick:n});
+  if(r.error){document.getElementById('e').textContent=r.error.message.includes('duplicate')?'Ten pseudonim jest zajęty.':'Pseudonim: 2–20 znaków.';return}
+  pid=r.data;nick=n;localStorage.pid=pid;localStorage.nick=n;key='';render();
+}
+async function answer(i){
+  sent[game.current_q]=i;draw();
+  await sb.rpc('submit_answer',{p_player:pid,p_q:game.current_q,p_choice:i});
+}
+const q=()=>Q.find(x=>x.id===game.current_q);
+function render(){
+  const k=!pid?'join':game.state+game.current_q;
+  if(k===key)return;key=k;draw();
+}
+async function draw(){
+  if(!game)return;
+  if(!pid){$.innerHTML=`<div class="card"><h1>🔌 IoT Challenge</h1><p class="mut">Wpisz pseudonim i dołącz do gry.</p>
+  <input id="n" maxlength="20" placeholder="Pseudonim" style="width:100%"><p id="e" class="acc"></p>
+  <button style="width:100%" onclick="join()">Dołączam!</button></div>`;return}
+  const st=game.state;
+  if(st==='lobby'){$.innerHTML=`<div class="card"><h2>Cześć, <span class="acc">${esc(nick)}</span>!</h2><p class="mut">Jesteś w grze. Czekaj na start od prowadzącego…</p></div>`;return}
+  const Qq=q();
+  if(st==='question'&&Qq){
+    const s=sent[Qq.id];
+    $.innerHTML=`<div class="card"><div class="mut">${esc(Qq.mission)} · <b id="t"></b> s</div><h2>${esc(Qq.prompt)}</h2></div>
+    <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i} ${s!==undefined&&s!==i?'dim':''}" ${s!==undefined?'disabled':''} onclick="answer(${i})">${esc(o)}</button>`).join('')}</div>
+    ${s!==undefined?'<p class="mut" style="text-align:center">Odpowiedź wysłana. Czekaj na wynik…</p>':''}`;tick();return}
+  if(st==='results'&&Qq){
+    const [c,m,lb]=await Promise.all([sb.rpc('get_correct',{p_q:Qq.id}),sb.rpc('get_my_result',{p_player:pid,p_q:Qq.id}),sb.from('leaderboard').select('*')]);
+    const my=m.data||{},rows=lb.data||[],rank=rows.findIndex(r=>r.nick===nick)+1,me=rows[rank-1];
+    $.innerHTML=`<div class="card" style="text-align:center"><div class="big">${my.points>0?'✅ Dobrze!':(my.choice==null?'⏱ Brak odpowiedzi':'❌ Błąd')}</div>
+    <p>Poprawna: <b class="acc">${esc(Qq.options[c.data]??'')}</b></p><p class="big acc">+${my.points||0} pkt</p>
+    <p>Masz <b>${me?me.score:0}</b> pkt · miejsce <b>${rank||'-'}</b> z ${rows.length}</p></div>`;return}
+  if(st==='final'){
+    const rows=(await sb.from('leaderboard').select('*')).data||[],rank=rows.findIndex(r=>r.nick===nick)+1;
+    $.innerHTML=`<div class="card" style="text-align:center"><h1>🏁 Koniec gry!</h1><p class="big acc">Miejsce ${rank||'-'}</p><p>${rows[rank-1]?.score||0} pkt</p></div>`}
+}
+function tick(){
+  const t=document.getElementById('t');if(!t||!game.q_started_at||!q())return;
+  t.textContent=Math.max(0,Math.ceil(q().seconds-(Date.now()-new Date(game.q_started_at))/1000));
+}
+init();
+</script></body></html>

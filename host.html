@@ -1,0 +1,52 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>IoT Challenge – prowadzący</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script></head><body><div class="wrap" style="max-width:1100px" id="app"></div>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=document.getElementById('app');
+let pin=sessionStorage.pin||'',game,Q=[],rows=[],cnt=0,key='';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const joinUrl=new URL('index.html',location.href).href;
+async function set(state,n){
+  const r=await sb.rpc('host_set',{p_pin:pin,p_state:state,p_q:n});
+  if(r.error){alert('Zły PIN lub błąd.');sessionStorage.pin=pin='';key='';draw();return}
+  await poll();
+}
+async function poll(){
+  game=(await sb.from('game').select('*').single()).data;
+  rows=(await sb.from('leaderboard').select('*')).data||[];
+  if(game?.state==='question')cnt=(await sb.rpc('answer_count',{p_q:game.current_q})).data||0;
+  const k=game.state+game.current_q+rows.length+cnt+rows.map(r=>r.score).join();
+  if(k!==key){key=k;draw()}
+}
+function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;draw()}
+function reset(){if(confirm('Usunąć wszystkich graczy i wyniki?'))sb.rpc('host_reset',{p_pin:pin}).then(poll)}
+function board(n){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}</b></div>`).join('')}
+function draw(){
+  if(!pin){$.innerHTML=`<div class="card"><h1>Panel prowadzącego</h1><input id="p" type="password" placeholder="PIN"> <button onclick="login()">Wejdź</button></div>`;return}
+  if(!game)return;
+  const st=game.state,n=game.current_q,Qq=Q.find(x=>x.id===n),last=n>=Q.length;
+  let main='',btn='';
+  if(st==='lobby'){
+    main=`<div class="card" style="text-align:center"><h1>🔌 IoT Challenge</h1><div id="qr" style="display:inline-block;background:#fff;padding:12px;border-radius:12px"></div>
+    <p class="mut">${esc(joinUrl)}</p><p class="big acc">${rows.length} / 37 graczy</p><p>${rows.map(r=>esc(r.nick)).join(' · ')}</p></div>`;
+    btn=`<button onclick="set('question',1)">▶ Start – pytanie 1</button>`}
+  else if(st==='question'){
+    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>
+    <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>
+    <p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
+    btn=`<button onclick="set('results',${n})">⏹ Pokaż odpowiedź</button>`}
+  else if(st==='results'){
+    main=`<div class="card"><div class="mut">${esc(Qq.mission)}</div><h2>${esc(Qq.prompt)}</h2><div class="opts" id="o"></div></div>
+    <div class="card"><h2>🏆 Top 10</h2>${board(10)}</div>`;
+    btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
+    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
+  else main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div>`;
+  $.innerHTML=main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
+  const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});
+}
+(async()=>{Q=(await sb.from('questions').select('*').order('id')).data||[];await poll();draw();setInterval(poll,1500)})();
+</script></body></html>
