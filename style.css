@@ -11,3 +11,4 @@ button{cursor:pointer;background:var(--acc);color:#0f172a;font-weight:700}button
 .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #64748b33}
 .bar{height:8px;background:var(--acc);border-radius:4px;transition:width .5s}
 .big{font-size:2.2em;font-weight:800}
+h1,h2{white-space:pre-wrap}.sel{outline:5px solid var(--txt)}
