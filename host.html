@@ -12,7 +12,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const joinUrl=new URL('index.html',location.href).href;
 async function set(state,n){
   const r=await sb.rpc('host_set',{p_pin:pin,p_state:state,p_q:n});
-  if(r.error){alert('Zły PIN lub błąd.');sessionStorage.pin=pin='';key='';draw();return}
+  if(r.error){alert('Błąd: '+r.error.message+(r.error.message.includes('bad pin')?' (zły PIN)':''));sessionStorage.pin=pin='';key='';draw();return}
   await poll();
 }
 async function poll(){
