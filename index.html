@@ -9,6 +9,7 @@ const $=document.getElementById('app');
 let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function init(){
+  if(pid){const r=await sb.rpc('player_exists',{p_player:pid});if(r.data===false){pid=null;delete localStorage.pid}}
   Q=(await sb.from('questions').select('*').order('id')).data||[];
   await load();
   sb.channel('g').on('postgres_changes',{event:'*',schema:'public',table:'game'},p=>{game=p.new;render()}).subscribe();
