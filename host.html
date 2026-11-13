@@ -16,6 +16,14 @@ const chipSVG=(t,p)=>{const H=26+p.length*18;return `<svg viewBox="0 0 300 ${H}"
 let hintOpen=true;
 const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
 const summaryHTML=(Q,d)=>{let last='';return '<div class="card"><h2>📚 Podsumowanie – wszystko po kolei</h2>'+(d||[]).map(x=>{const q=Q.find(z=>z.id===x.q);if(!q)return '';const hd=q.mission!==last?`<h3 class="acc" style="margin:18px 0 4px">${esc(q.mission)}</h3>`:'';last=q.mission;return hd+`<div class="row" style="display:block"><b style="white-space:pre-wrap">${x.q}. ${esc(q.prompt)}</b><div class="acc" style="white-space:pre-wrap">✔ ${esc(ctext(q,x.c))}</div><div class="mut" style="font-size:.9em">${esc(x.e||'')}</div></div>`}).join('')+'</div>'};
+const WC=['#f87171','#60a5fa','#fbbf24','#4ade80','#c084fc','#fb923c','#22d3ee','#f472b6'];
+const pl=o=>{o=String(o);let i=o.indexOf(' – ');if(i<0)i=o.indexOf(': ');if(i>=0)return[o.slice(0,i),o.slice(i+(o[i]===':'?2:3))];const m=o.match(/^(.*?) \((.*)\)$/);return m?[m[1],m[2]]:[o,'']};
+const wirePin=(o,col,act,click,left)=>{const [a,b]=pl(o);return `<button ${click?`onclick="${click}"`:'disabled'} style="all:unset;box-sizing:border-box;cursor:${click?'pointer':'default'};display:flex;align-items:center;gap:8px;height:60px;padding:6px 10px;border-radius:14px;border:2px ${col?'solid '+col:'dashed #94a3b8'};background:${col?col+'26':'transparent'};${act?'box-shadow:0 0 0 3px var(--acc);':''}${left?'flex-direction:row-reverse;text-align:right;':''}"><span style="width:12px;height:12px;border-radius:50%;flex:none;background:${col||'#94a3b8'}"></span><span style="line-height:1.15;min-width:0"><b style="font-size:14px">${esc(a)}</b>${b?`<br><span style="font-size:11px;opacity:.8">${esc(b)}</span>`:''}</span></button>`};
+function wireHTML(Q,wr,wl,live){const n=Q.options.length,R=68,H=n*R;
+ const L=Q.options.map((o,i)=>wirePin(o,wr[i]!=null?WC[i%8]:null,live&&wl===i,live?(wr[i]!=null?`unwire(${i})`:`wl=${i};draw()`):0,1)).join('');
+ const Rr=Q.extra.map((o,j)=>{const u=wr.indexOf(j);return wirePin(o,u>=0?WC[u%8]:null,0,live&&u<0&&wl!=null?`wire(${j})`:0,0)}).join('');
+ const ln=wr.map((j,i)=>j==null?'':`<path d="M0 ${i*R+30} C 28 ${i*R+30} 28 ${j*R+30} 56 ${j*R+30}" fill="none" stroke="${WC[i%8]}" stroke-width="6" stroke-linecap="round"/>`).join('');
+ return `<div style="grid-column:1/3;display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr);margin:6px 0"><div style="display:grid;gap:8px;align-content:start">${L}</div><svg viewBox="0 0 56 ${H}" width="56" height="${H}">${ln}</svg><div style="display:grid;gap:8px;align-content:start">${Rr}</div></div>`}
 const ctext=(Q,c)=>{const d=String(c).split('');
  if(Q.kind==='order')return d.map(x=>Q.options[x-1]).join(' → ');
  if(Q.kind==='seg'){const nd=Q.options.length/8;return Array.from({length:nd},(_,k)=>{const b=(c>>(8*k))&255;return (nd>1?'Rejestr '+(k+1)+': ':'')+Q.options.slice(0,8).filter((_,i)=>b>>i&1).join(' ')+' (0x'+b.toString(16).toUpperCase().padStart(2,'0')+')'}).join('\n')}
@@ -61,15 +69,15 @@ function draw(){
     btn=`<button onclick="set('question',1)">▶ Start – pytanie 1</button>`}
   else if(st==='question'){
     main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}${hintHTML(Qq)}
-    <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>
-    ${['match','wire'].includes(Qq.kind)?'<p class="big">'+esc(Qq.extra.join('  ·  '))+'</p>':''}<p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
+    ${Qq.kind==='wire'?wireHTML(Qq,[],null,0):`<div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>`}
+    ${Qq.kind==='match'?'<p class="big">'+esc(Qq.extra.join('  ·  '))+'</p>':''}<p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
     btn=`<button onclick="set('results',${n})">⏹ Pokaż odpowiedź</button>`}
   else if(st==='results'){
     main=`<div class="card"><div class="mut">${esc(Qq.mission)}</div><h2>${esc(Qq.prompt)}</h2><div class="opts" id="o"></div><p id="ex" style="font-size:1.15em;margin-top:16px"></p></div>
     <div class="card"><h2>🏆 Top 10</h2>${board(10)}</div>`;
     btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
     sb.rpc('get_explanation',{p_q:n}).then(r=>{const e=document.getElementById('ex');if(e)e.textContent=r.data||''});
-    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
+    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind==='wire'?wireHTML(Qq,String(r.data).split('').map(x=>x-1),null,0):Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
   else{main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div><div id="sum"></div>`;sb.rpc('final_summary').then(r=>{const e=document.getElementById('sum');if(e)e.innerHTML=summaryHTML(Q,r.data)})}
   $.innerHTML=stageBar()+main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
   $.innerHTML+=adminPanel();
