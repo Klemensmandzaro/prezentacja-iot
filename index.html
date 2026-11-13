@@ -8,9 +8,11 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
 let sentAt={},seq=[],ms=[],mp=[],wr=[],wl=0;
 let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
+const hintUsed=new Set(JSON.parse(localStorage['hu_'+pid]||'[]'));
+function useHint(){const q=game.current_q;if(!pid||hintUsed.has(q))return;hintUsed.add(q);localStorage['hu_'+pid]=JSON.stringify([...hintUsed]);sb.rpc('use_hint',{p_player:pid,p_q:q})}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function init(){
-  if(pid){const r=await sb.rpc('player_exists',{p_player:pid});if(r.data===false){pid=null;delete localStorage.pid}}
+  if(pid){const r=await sb.rpc('player_exists',{p_player:pid});if(r.data===false){pid=null;hintUsed.clear();delete localStorage.pid}}
   Q=(await sb.from('questions').select('*').order('id')).data||[];
   await load();
   sb.channel('g').on('postgres_changes',{event:'*',schema:'public',table:'game'},p=>{game=p.new;render()}).subscribe();
@@ -21,7 +23,7 @@ async function join(){
   const n=document.getElementById('n').value.trim();
   const r=await sb.rpc('join_game',{p_nick:n});
   if(r.error){document.getElementById('e').textContent=r.error.message.includes('duplicate')?'Ten pseudonim jest zajęty.':'Pseudonim: 2–20 znaków.';return}
-  pid=r.data;nick=n;localStorage.pid=pid;localStorage.nick=n;key='';render();
+  pid=r.data;hintUsed.clear();nick=n;localStorage.pid=pid;localStorage.nick=n;key='';render();
 }
 async function answer(i){
   sent[game.current_q]=i;draw();
@@ -31,8 +33,8 @@ const segSVG=(m,nd=1,inv=0,lab=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,3
  return `<div style="display:flex;justify-content:center;gap:16px;grid-column:1/3;margin:8px 0">${Array.from({length:nd},(_,d)=>{const f=i=>(((m>>(d*8+i))&1)^inv)?'var(--acc)':'#64748b44';
  return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/>${lab?['a:30:11','b:54:32','c:54:76','d:30:95','e:6:76','f:6:32','g:30:53','dp:64:84'].map(x=>{const[l,a,b]=x.split(':');return `<text x="${a}" y="${b}" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor">${l}</text>`}).join(''):''}</svg>`}).join('')}</div>`};
 const chipSVG=(t,p)=>{const H=26+p.length*18;return `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:340px;display:block;margin:6px auto"><rect x="190" y="4" width="100" height="${H-8}" rx="8" fill="#64748b33" stroke="var(--acc)" stroke-width="2"/><text x="240" y="${H/2+4}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${esc(t)}</text>${p.map((n,i)=>`<line x1="170" y1="${22+i*18}" x2="190" y2="${22+i*18}" stroke="var(--acc)" stroke-width="3"/><text x="166" y="${26+i*18}" text-anchor="end" font-size="10" fill="currentColor">${esc(n)}</text>`).join('')}</svg>`};
-let hintOpen=true;
-const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
+let hintOpen=false;
+const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open;if(this.open)useHint()"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
 const summaryHTML=(Q,d)=>{let last='';return '<div class="card"><h2>📚 Podsumowanie – wszystko po kolei</h2>'+(d||[]).map(x=>{const q=Q.find(z=>z.id===x.q);if(!q)return '';const hd=q.mission!==last?`<h3 class="acc" style="margin:18px 0 4px">${esc(q.mission)}</h3>`:'';last=q.mission;return hd+`<div class="row" style="display:block"><b style="white-space:pre-wrap">${x.q}. ${esc(q.prompt)}</b><div class="acc" style="white-space:pre-wrap">✔ ${esc(ctext(q,x.c))}</div><div class="mut" style="font-size:.9em">${esc(x.e||'')}</div></div>`}).join('')+'</div>'};
 const WC=['#f87171','#60a5fa','#fbbf24','#4ade80','#c084fc','#fb923c','#22d3ee','#f472b6'];
 const pl=o=>{o=String(o);let i=o.indexOf(' – ');if(i<0)i=o.indexOf(': ');if(i>=0)return[o.slice(0,i),o.slice(i+(o[i]===':'?2:3))];const m=o.match(/^(.*?) \((.*)\)$/);return m?[m[1],m[2]]:[o,'']};
@@ -74,7 +76,7 @@ function kindUI(Q,s){if(s!==undefined)return '';const k=Q.kind;
 const q=()=>Q.find(x=>x.id===game.current_q);
 function render(){
   const k=!pid?'join':game.state+game.current_q+game.q_started_at;
-  if(k===key)return;key=k;seq=[];ms=[];mp=[];wr=[];wl=0;draw();
+  if(k===key)return;key=k;hintOpen=false;seq=[];ms=[];mp=[];wr=[];wl=0;draw();
 }
 async function draw(){
   if(!game)return;
@@ -98,7 +100,7 @@ async function draw(){
     <p>Masz <b>${me?me.score:0}</b> pkt · miejsce <b>${rank||'-'}</b> z ${rows.length}</p></div>`;return}
   if(st==='final'){
     const rows=(await sb.from('leaderboard').select('*')).data||[],rank=rows.findIndex(r=>r.nick===nick)+1,sm=await sb.rpc('final_summary');
-    $.innerHTML=`<div class="card" style="text-align:center"><h1>🏁 Koniec gry!</h1><p class="big acc">Miejsce ${rank||'-'}</p><p>${rows[rank-1]?.score||0} pkt</p></div>`+summaryHTML(Q,sm.data)}
+    $.innerHTML=`<div class="card" style="text-align:center"><h1>🏁 Koniec gry!</h1><p class="big acc">Miejsce ${rank||'-'}</p><p>${rows[rank-1]?.score||0} pkt</p><p>💡 Użyte podpowiedzi: <b>${rows[rank-1]?.hints??hintUsed.size}</b></p></div>`+summaryHTML(Q,sm.data)}
 }
 function tick(){
   const t=document.getElementById('t');if(!t||!game.q_started_at||!q())return;

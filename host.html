@@ -13,8 +13,8 @@ const segSVG=(m,nd=1,inv=0,lab=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,3
  return `<div style="display:flex;justify-content:center;gap:16px;grid-column:1/3;margin:8px 0">${Array.from({length:nd},(_,d)=>{const f=i=>(((m>>(d*8+i))&1)^inv)?'var(--acc)':'#64748b44';
  return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/>${lab?['a:30:11','b:54:32','c:54:76','d:30:95','e:6:76','f:6:32','g:30:53','dp:64:84'].map(x=>{const[l,a,b]=x.split(':');return `<text x="${a}" y="${b}" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor">${l}</text>`}).join(''):''}</svg>`}).join('')}</div>`};
 const chipSVG=(t,p)=>{const H=26+p.length*18;return `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:340px;display:block;margin:6px auto"><rect x="190" y="4" width="100" height="${H-8}" rx="8" fill="#64748b33" stroke="var(--acc)" stroke-width="2"/><text x="240" y="${H/2+4}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${esc(t)}</text>${p.map((n,i)=>`<line x1="170" y1="${22+i*18}" x2="190" y2="${22+i*18}" stroke="var(--acc)" stroke-width="3"/><text x="166" y="${26+i*18}" text-anchor="end" font-size="10" fill="currentColor">${esc(n)}</text>`).join('')}</svg>`};
-let hintOpen=true;
-const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
+let hintOpen=false;
+const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open;if(this.open)useHint()"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
 const summaryHTML=(Q,d)=>{let last='';return '<div class="card"><h2>📚 Podsumowanie – wszystko po kolei</h2>'+(d||[]).map(x=>{const q=Q.find(z=>z.id===x.q);if(!q)return '';const hd=q.mission!==last?`<h3 class="acc" style="margin:18px 0 4px">${esc(q.mission)}</h3>`:'';last=q.mission;return hd+`<div class="row" style="display:block"><b style="white-space:pre-wrap">${x.q}. ${esc(q.prompt)}</b><div class="acc" style="white-space:pre-wrap">✔ ${esc(ctext(q,x.c))}</div><div class="mut" style="font-size:.9em">${esc(x.e||'')}</div></div>`}).join('')+'</div>'};
 const WC=['#f87171','#60a5fa','#fbbf24','#4ade80','#c084fc','#fb923c','#22d3ee','#f472b6'];
 const pl=o=>{o=String(o);let i=o.indexOf(' – ');if(i<0)i=o.indexOf(': ');if(i>=0)return[o.slice(0,i),o.slice(i+(o[i]===':'?2:3))];const m=o.match(/^(.*?) \((.*)\)$/);return m?[m[1],m[2]]:[o,'']};
@@ -41,13 +41,15 @@ async function poll(){
   game=(await sb.from('game').select('*').single()).data;
   rows=(await sb.from('leaderboard').select('*')).data||[];
   if(game?.state==='question')cnt=(await sb.rpc('answer_count',{p_q:game.current_q})).data||0;
+  const qk=game.state+game.current_q;if(qk!==lastQ){lastQ=qk;hintOpen=false}
   const k=game.state+game.current_q+rows.length+cnt+rows.map(r=>r.score).join();
   if(k!==key){key=k;draw()}
 }
 function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;draw()}
 function reset(){if(confirm('Usunąć wszystkich graczy i wyniki?'))sb.rpc('host_reset',{p_pin:pin}).then(poll)}
-function board(n){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}</b></div>`).join('')}
-let adminOpen=false,clearOn=true;
+function board(n,h){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}${h&&r.hints!=null?' · 💡'+r.hints:''}</b></div>`).join('')}
+let adminOpen=false,clearOn=true,lastQ='';
+function useHint(){}
 function groups(){const g=[];Q.forEach(q=>{const k=/Warsztat \d\/3/.test(q.mission)?'🎮 Warsztat: kabelki i wyświetlacz':q.mission;const l=g[g.length-1];if(l&&l.name===k)l.qs.push(q.id);else g.push({name:k,qs:[q.id]})});return g}
 async function jump(q){if(q==null)return;if(clearOn)await sb.rpc('host_clear_q',{p_pin:pin,p_q:q});await set('question',q)}
 function stageBar(){const G=groups(),n=game.current_q,gi=G.findIndex(g=>g.qs.includes(n));
@@ -78,7 +80,7 @@ function draw(){
     btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
     sb.rpc('get_explanation',{p_q:n}).then(r=>{const e=document.getElementById('ex');if(e)e.textContent=r.data||''});
     sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind==='wire'?wireHTML(Qq,String(r.data).split('').map(x=>x-1),null,0):Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
-  else{main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div><div id="sum"></div>`;sb.rpc('final_summary').then(r=>{const e=document.getElementById('sum');if(e)e.innerHTML=summaryHTML(Q,r.data)})}
+  else{main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37,1)}<p class="mut">💡 Podpowiedzi użyte łącznie: ${rows.reduce((a,r)=>a+(r.hints||0),0)}</p></div><div id="sum"></div>`;sb.rpc('final_summary').then(r=>{const e=document.getElementById('sum');if(e)e.innerHTML=summaryHTML(Q,r.data)})}
   $.innerHTML=stageBar()+main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
   $.innerHTML+=adminPanel();
   const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});
