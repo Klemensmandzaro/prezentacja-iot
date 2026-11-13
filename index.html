@@ -27,14 +27,14 @@ async function answer(i){
   sent[game.current_q]=i;draw();
   await sb.rpc('submit_answer',{p_player:pid,p_q:game.current_q,p_choice:i});
 }
-const segSVG=m=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
- const f=i=>m>>i&1?'var(--acc)':'#64748b44';
- return `<svg viewBox="0 0 72 100" style="width:110px;display:block;margin:8px auto;grid-column:1/3">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/></svg>`};
+const segSVG=(m,nd=1,inv=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
+ return `<div style="display:flex;justify-content:center;gap:16px;grid-column:1/3;margin:8px 0">${Array.from({length:nd},(_,d)=>{const f=i=>(((m>>(d*8+i))&1)^inv)?'var(--acc)':'#64748b44';
+ return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/></svg>`}).join('')}</div>`};
 const ctext=(Q,c)=>{const d=String(c).split('');
  if(Q.kind==='order')return d.map(x=>Q.options[x-1]).join(' → ');
- if(Q.kind==='seg')return Q.options.filter((_,i)=>c>>i&1).join(' ')+' (bajt 0x'+c.toString(16).toUpperCase()+')';
+ if(Q.kind==='seg'){const nd=Q.options.length/8;return Array.from({length:nd},(_,k)=>{const b=(c>>(8*k))&255;return (nd>1?'Rejestr '+(k+1)+': ':'')+Q.options.slice(0,8).filter((_,i)=>b>>i&1).join(' ')+' (0x'+b.toString(16).toUpperCase().padStart(2,'0')+')'}).join('\n')}
  if(Q.kind==='match'||Q.kind==='wire')return d.map((x,i)=>Q.options[i]+' ↔ '+Q.extra[x-1]).join(' · ');
- if(Q.kind==='multi')return Q.options.filter((_,i)=>c>>i&1).join(', ');
+ if(Q.kind==='multi')return Q.options.filter((_,i)=>c>>i&1).join(', ')+(Q.extra?.[0]==='led'?' = '+c:'');
  if(Q.kind==='number')return c+' '+(Q.extra?.[0]||'');
  return Q.options[c]??''};
 const B=(c,t,f,x='')=>`<button class="${c}" style="min-height:56px;padding:12px" ${x} onclick="${f}">${t}</button>`;
@@ -47,7 +47,7 @@ function num(){const v=parseInt(document.getElementById('nv').value);if(!isNaN(v
 function kindUI(Q,s){if(s!==undefined)return '';const k=Q.kind;
  const clr='<button style="background:transparent;color:var(--txt)" onclick="seq=[];ms=[];mp=[];wr=[];wl=0;draw()">Wyczyść</button>';
  if(k==='order')return `<p class="mut">Stukaj od pierwszego do ostatniego kroku:</p><div class="opts" style="grid-template-columns:1fr">${Q.options.map((o,i)=>{const p=seq.indexOf(i);return B('o'+i%4,(p>=0?'<b>'+(p+1)+'.</b> ':'')+esc(o),'tap('+i+')',p>=0?'disabled':'')}).join('')}</div><p style="display:flex;gap:10px">${clr}<button style="flex:1" ${seq.length<Q.options.length?'disabled':''} onclick="answer(+seq.map(i=>i+1).join(''))">Wyślij</button></p>`;
- if(k==='multi')return `<p class="mut">Zaznacz wszystkie poprawne, potem wyślij:</p><div class="opts" style="grid-template-columns:1fr">${Q.options.map((o,i)=>B('o'+i%4+(ms.includes(i)?' sel':''),(ms.includes(i)?'✔ ':'')+esc(o),'tog('+i+')')).join('')}</div><p><button style="width:100%" ${ms.length?'':'disabled'} onclick="answer(${ms.reduce((a,i)=>a+2**i,0)})">Wyślij</button></p>`;
+ if(k==='multi')return `<p class="mut">Zaznacz wszystkie poprawne, potem wyślij:</p><div class="opts" style="grid-template-columns:${Q.extra?.[0]==='led'?'1fr 1fr 1fr 1fr':'1fr'}">${Q.options.map((o,i)=>B('o'+i%4+(ms.includes(i)?' sel':''),(Q.extra?.[0]==='led'?(ms.includes(i)?'💡 ':'⚫ '):(ms.includes(i)?'✔ ':''))+esc(o),'tog('+i+')')).join('')}</div><p><button style="width:100%" ${ms.length?'':'disabled'} onclick="answer(${ms.reduce((a,i)=>a+2**i,0)})">Wyślij</button></p>`;
  if(k==='match'){const c=mp.length,done=c>=Q.options.length;
   return `<div class="card">${Q.options.map((o,i)=>`<div class="row"><span>${esc(o)}</span><b class="acc">${i<c?esc(Q.extra[mp[i]]):i===c?'❓':''}</b></div>`).join('')}</div>`+
   (done?`<p style="display:flex;gap:10px">${clr}<button style="flex:1" onclick="answer(+mp.map(i=>i+1).join(''))">Wyślij</button></p>`:
@@ -62,7 +62,7 @@ function kindUI(Q,s){if(s!==undefined)return '';const k=Q.kind;
   const ln=wr.map((j,i)=>j==null?'':`<line x1="0" y1="${i*52+24}" x2="60" y2="${j*52+24}" stroke="${col(i)}" stroke-width="5" stroke-linecap="round"/>`).join('');
   return `<p class="mut">Stuknij pin po lewej, potem pin po prawej. Stuknięcie podłączonego pinu cofa kabel.</p><div style="display:grid;grid-template-columns:1fr 60px 1fr"><div style="display:grid;gap:4px;align-content:start">${L}</div><svg viewBox="0 0 60 ${n*52}" width="60" height="${n*52}" preserveAspectRatio="none">${ln}</svg><div style="display:grid;gap:4px;align-content:start">${R}</div></div>
   <p style="display:flex;gap:10px;margin-top:12px">${clr}<button style="flex:1" ${wr.some(x=>x==null)?'disabled':''} onclick="answer(+wr.map(j=>j+1).join(''))">Wyślij</button></p>`}
- if(k==='seg')return segSVG(ms.reduce((a,i)=>a|1<<i,0))+`<div class="opts" style="grid-template-columns:1fr 1fr 1fr 1fr">${Q.options.map((o,i)=>B('o'+i%4+(ms.includes(i)?' sel':''),'Q'+'ABCDEFGH'[i]+' · '+o,'tog('+i+')')).join('')}</div><p style="display:flex;gap:10px">${clr}<button style="flex:1" onclick="answer(${ms.reduce((a,i)=>a+2**i,0)})">Wyślij</button></p>`;
+ if(k==='seg'){const nd=Q.options.length/8,inv=Q.extra?.[0]==='anode',pm=ms.reduce((a,i)=>a|1<<i,0);return segSVG(pm,nd,inv)+(inv?'<p class="mut" style="text-align:center">Bit = 1 gasi segment (wspólna anoda).</p>':'')+`<div class="opts" style="grid-template-columns:1fr 1fr 1fr 1fr">${Q.options.map((o,i)=>B('o'+i%4+(ms.includes(i)?' sel':''),(nd>1?'R'+((i>>3)+1)+'·':'')+'Q'+'ABCDEFGH'[i%8]+' · '+o,'tog('+i+')')).join('')}</div><p style="display:flex;gap:10px">${clr}<button style="flex:1" onclick="answer(${ms.reduce((a,i)=>a+2**i,0)})">Wyślij</button></p>`}
  return ''}
 const q=()=>Q.find(x=>x.id===game.current_q);
 function render(){
@@ -80,14 +80,14 @@ async function draw(){
   if(st==='question'&&Qq){
     if(sentAt[Qq.id]!==game.q_started_at){delete sent[Qq.id];sentAt[Qq.id]=game.q_started_at}
     const s=sent[Qq.id];
-    $.innerHTML=`<div class="card"><div class="mut">${esc(Qq.mission)} · <b id="t"></b> s</div><h2>${esc(Qq.prompt)}</h2></div>
+    $.innerHTML=`<div class="card"><div class="mut">${esc(Qq.mission)} · <b id="t"></b> s</div><h2>${esc(Qq.prompt)}</h2></div>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}
     ${Qq.kind!=='choice'?kindUI(Qq,s):`<div class="opts">${Qq.options.map((o,i)=>`<button class="o${i} ${s!==undefined&&s!==i?'dim':''}" ${s!==undefined?'disabled':''} onclick="answer(${i})">${esc(o)}</button>`).join('')}</div>`}
     ${s!==undefined?'<p class="mut" style="text-align:center">Odpowiedź wysłana. Czekaj na wynik…</p>':''}`;tick();return}
   if(st==='results'&&Qq){
     const [c,m,lb,ex]=await Promise.all([sb.rpc('get_correct',{p_q:Qq.id}),sb.rpc('get_my_result',{p_player:pid,p_q:Qq.id}),sb.from('leaderboard').select('*'),sb.rpc('get_explanation',{p_q:Qq.id})]);
     const my=m.data||{},rows=lb.data||[],rank=rows.findIndex(r=>r.nick===nick)+1,me=rows[rank-1];
     $.innerHTML=`<div class="card" style="text-align:center"><div class="big">${my.points>0?'✅ Dobrze!':(my.choice==null?'⏱ Brak odpowiedzi':'❌ Błąd')}</div>
-    <p>Poprawna: <b class="acc">${esc(ctext(Qq,c.data))}</b></p><p class="big acc">+${my.points||0} pkt</p>${Qq.kind==='seg'?segSVG(c.data):''}<p class="mut" style="text-align:left">${esc(ex.data||'')}</p>
+    <p>Poprawna: <b class="acc">${esc(ctext(Qq,c.data))}</b></p><p class="big acc">+${my.points||0} pkt</p>${Qq.kind==='seg'?segSVG(c.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):''}<p class="mut" style="text-align:left">${esc(ex.data||'')}</p>
     <p>Masz <b>${me?me.score:0}</b> pkt · miejsce <b>${rank||'-'}</b> z ${rows.length}</p></div>`;return}
   if(st==='final'){
     const rows=(await sb.from('leaderboard').select('*')).data||[],rank=rows.findIndex(r=>r.nick===nick)+1;

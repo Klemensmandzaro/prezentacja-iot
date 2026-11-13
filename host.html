@@ -9,14 +9,14 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
 let pin=sessionStorage.pin||'',game,Q=[],rows=[],cnt=0,key='';
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const segSVG=m=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
- const f=i=>m>>i&1?'var(--acc)':'#64748b44';
- return `<svg viewBox="0 0 72 100" style="width:110px;display:block;margin:8px auto;grid-column:1/3">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/></svg>`};
+const segSVG=(m,nd=1,inv=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
+ return `<div style="display:flex;justify-content:center;gap:16px;grid-column:1/3;margin:8px 0">${Array.from({length:nd},(_,d)=>{const f=i=>(((m>>(d*8+i))&1)^inv)?'var(--acc)':'#64748b44';
+ return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/></svg>`}).join('')}</div>`};
 const ctext=(Q,c)=>{const d=String(c).split('');
  if(Q.kind==='order')return d.map(x=>Q.options[x-1]).join(' → ');
- if(Q.kind==='seg')return Q.options.filter((_,i)=>c>>i&1).join(' ')+' (bajt 0x'+c.toString(16).toUpperCase()+')';
+ if(Q.kind==='seg'){const nd=Q.options.length/8;return Array.from({length:nd},(_,k)=>{const b=(c>>(8*k))&255;return (nd>1?'Rejestr '+(k+1)+': ':'')+Q.options.slice(0,8).filter((_,i)=>b>>i&1).join(' ')+' (0x'+b.toString(16).toUpperCase().padStart(2,'0')+')'}).join('\n')}
  if(Q.kind==='match'||Q.kind==='wire')return d.map((x,i)=>Q.options[i]+' ↔ '+Q.extra[x-1]).join('\n');
- if(Q.kind==='multi')return Q.options.filter((_,i)=>c>>i&1).join(', ');
+ if(Q.kind==='multi')return Q.options.filter((_,i)=>c>>i&1).join(', ')+(Q.extra?.[0]==='led'?' = '+c:'');
  if(Q.kind==='number')return c+' '+(Q.extra?.[0]||'');
  return Q.options[c]??''};
 const joinUrl=new URL('index.html',location.href).href;
@@ -36,7 +36,7 @@ function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;d
 function reset(){if(confirm('Usunąć wszystkich graczy i wyniki?'))sb.rpc('host_reset',{p_pin:pin}).then(poll)}
 function board(n){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}</b></div>`).join('')}
 let adminOpen=false,clearOn=true;
-function groups(){const g=[];Q.forEach(q=>{const k=/Warsztat/.test(q.mission)?'🎮 Warsztat: kabelki i wyświetlacz':q.mission;const l=g[g.length-1];if(l&&l.name===k)l.qs.push(q.id);else g.push({name:k,qs:[q.id]})});return g}
+function groups(){const g=[];Q.forEach(q=>{const k=/Warsztat \d\/3/.test(q.mission)?'🎮 Warsztat: kabelki i wyświetlacz':q.mission;const l=g[g.length-1];if(l&&l.name===k)l.qs.push(q.id);else g.push({name:k,qs:[q.id]})});return g}
 async function jump(q){if(q==null)return;if(clearOn)await sb.rpc('host_clear_q',{p_pin:pin,p_q:q});await set('question',q)}
 function stageBar(){const G=groups(),n=game.current_q,gi=G.findIndex(g=>g.qs.includes(n));
  return `<p class="mut" style="margin:0">${game.state==='lobby'?'Poczekalnia':game.state==='final'?'Koniec gry':`Etap ${gi+1}/${G.length} · ${esc(G[gi]?.name||'')} · pytanie ${n}/${Q.length}`}</p>`}
@@ -56,7 +56,7 @@ function draw(){
     <p class="mut">${esc(joinUrl)}</p><p class="big acc">${rows.length} / 37 graczy</p><p>${rows.map(r=>esc(r.nick)).join(' · ')}</p></div>`;
     btn=`<button onclick="set('question',1)">▶ Start – pytanie 1</button>`}
   else if(st==='question'){
-    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>
+    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}
     <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>
     ${['match','wire'].includes(Qq.kind)?'<p class="big">'+esc(Qq.extra.join('  ·  '))+'</p>':''}<p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
     btn=`<button onclick="set('results',${n})">⏹ Pokaż odpowiedź</button>`}
@@ -65,7 +65,7 @@ function draw(){
     <div class="card"><h2>🏆 Top 10</h2>${board(10)}</div>`;
     btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
     sb.rpc('get_explanation',{p_q:n}).then(r=>{const e=document.getElementById('ex');if(e)e.textContent=r.data||''});
-    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
+    sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
   else main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div>`;
   $.innerHTML=stageBar()+main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
   $.innerHTML+=adminPanel();
