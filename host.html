@@ -9,9 +9,13 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=document.getElementById('app');
 let pin=sessionStorage.pin||'',game,Q=[],rows=[],cnt=0,key='';
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const segSVG=(m,nd=1,inv=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
+const segSVG=(m,nd=1,inv=0,lab=0)=>{const r=[[10,4,40,8],[50,10,8,36],[50,54,8,36],[10,88,40,8],[2,54,8,36],[2,10,8,36],[10,46,40,8]];
  return `<div style="display:flex;justify-content:center;gap:16px;grid-column:1/3;margin:8px 0">${Array.from({length:nd},(_,d)=>{const f=i=>(((m>>(d*8+i))&1)^inv)?'var(--acc)':'#64748b44';
- return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/></svg>`}).join('')}</div>`};
+ return `<svg viewBox="0 0 72 100" style="width:90px">${r.map((q,i)=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="3" fill="${f(i)}"/>`).join('')}<circle cx="64" cy="92" r="4.5" fill="${f(7)}"/>${lab?['a:30:11','b:54:32','c:54:76','d:30:95','e:6:76','f:6:32','g:30:53','dp:64:84'].map(x=>{const[l,a,b]=x.split(':');return `<text x="${a}" y="${b}" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor">${l}</text>`}).join(''):''}</svg>`}).join('')}</div>`};
+const chipSVG=(t,p)=>{const H=26+p.length*18;return `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:340px;display:block;margin:6px auto"><rect x="190" y="4" width="100" height="${H-8}" rx="8" fill="#64748b33" stroke="var(--acc)" stroke-width="2"/><text x="240" y="${H/2+4}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${esc(t)}</text>${p.map((n,i)=>`<line x1="170" y1="${22+i*18}" x2="190" y2="${22+i*18}" stroke="var(--acc)" stroke-width="3"/><text x="166" y="${26+i*18}" text-anchor="end" font-size="10" fill="currentColor">${esc(n)}</text>`).join('')}</svg>`};
+let hintOpen=true;
+const hintHTML=Q=>{const h=Q.hint;if(!h)return '';return `<details class="card" ${hintOpen?'open':''} ontoggle="hintOpen=this.open"><summary>💡 Podpowiedź</summary>${h.chip?chipSVG(h.chip.title,h.chip.pins):''}${h.seg?segSVG(0,1,0,1):''}<p class="mut" style="white-space:pre-wrap;font-size:.9em">${esc(h.t||'')}</p></details>`};
+const summaryHTML=(Q,d)=>{let last='';return '<div class="card"><h2>📚 Podsumowanie – wszystko po kolei</h2>'+(d||[]).map(x=>{const q=Q.find(z=>z.id===x.q);if(!q)return '';const hd=q.mission!==last?`<h3 class="acc" style="margin:18px 0 4px">${esc(q.mission)}</h3>`:'';last=q.mission;return hd+`<div class="row" style="display:block"><b style="white-space:pre-wrap">${x.q}. ${esc(q.prompt)}</b><div class="acc" style="white-space:pre-wrap">✔ ${esc(ctext(q,x.c))}</div><div class="mut" style="font-size:.9em">${esc(x.e||'')}</div></div>`}).join('')+'</div>'};
 const ctext=(Q,c)=>{const d=String(c).split('');
  if(Q.kind==='order')return d.map(x=>Q.options[x-1]).join(' → ');
  if(Q.kind==='seg'){const nd=Q.options.length/8;return Array.from({length:nd},(_,k)=>{const b=(c>>(8*k))&255;return (nd>1?'Rejestr '+(k+1)+': ':'')+Q.options.slice(0,8).filter((_,i)=>b>>i&1).join(' ')+' (0x'+b.toString(16).toUpperCase().padStart(2,'0')+')'}).join('\n')}
@@ -56,7 +60,7 @@ function draw(){
     <p class="mut">${esc(joinUrl)}</p><p class="big acc">${rows.length} / 37 graczy</p><p>${rows.map(r=>esc(r.nick)).join(' · ')}</p></div>`;
     btn=`<button onclick="set('question',1)">▶ Start – pytanie 1</button>`}
   else if(st==='question'){
-    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}
+    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}${hintHTML(Qq)}
     <div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>
     ${['match','wire'].includes(Qq.kind)?'<p class="big">'+esc(Qq.extra.join('  ·  '))+'</p>':''}<p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
     btn=`<button onclick="set('results',${n})">⏹ Pokaż odpowiedź</button>`}
@@ -66,7 +70,7 @@ function draw(){
     btn=last?`<button onclick="set('final',${n})">🏁 Zakończ grę</button>`:`<button onclick="set('question',${n+1})">▶ Pytanie ${n+1}</button>`;
     sb.rpc('get_explanation',{p_q:n}).then(r=>{const e=document.getElementById('ex');if(e)e.textContent=r.data||''});
     sb.rpc('get_correct',{p_q:n}).then(r=>{const o=document.getElementById('o');if(o)o.innerHTML=Qq.kind!=='choice'?(Qq.kind==='seg'?segSVG(r.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):'')+'<p class="big acc" style="grid-column:1/3;white-space:pre-wrap">'+esc(ctext(Qq,r.data))+'</p>':Qq.options.map((t,i)=>`<button class="o${i} ${i===r.data?'ok':'dim'}" disabled>${esc(t)}</button>`).join('')})}
-  else main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div>`;
+  else{main=`<div class="card"><h1>🏁 Ranking końcowy</h1>${board(37)}</div><div id="sum"></div>`;sb.rpc('final_summary').then(r=>{const e=document.getElementById('sum');if(e)e.innerHTML=summaryHTML(Q,r.data)})}
   $.innerHTML=stageBar()+main+`<div class="card" style="display:flex;gap:10px;justify-content:space-between">${btn}<button style="background:transparent;color:var(--txt)" onclick="reset()">♻ Reset</button></div>`;
   $.innerHTML+=adminPanel();
   const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});
