@@ -36,6 +36,7 @@ async function set(state,n){
   const r=await sb.rpc('host_set',{p_pin:pin,p_state:state,p_q:n});
   if(r.error){alert('Błąd: '+r.error.message+(r.error.message.includes('bad pin')?' (zły PIN)':''));sessionStorage.pin=pin='';key='';draw();return}
   await poll();
+  if(state==='question'&&game?.q_started_at)skew=Date.now()-new Date(game.q_started_at);
 }
 async function poll(){
   game=(await sb.from('game').select('*').single()).data;
@@ -48,7 +49,14 @@ async function poll(){
 function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;draw()}
 function reset(){if(confirm('Usunąć wszystkich graczy i wyniki?'))sb.rpc('host_reset',{p_pin:pin}).then(poll)}
 function board(n,h){return rows.slice(0,n).map((r,i)=>`<div class="row"><span>${i+1}. ${esc(r.nick)}</span><b>${r.score}${h&&r.hints!=null?' · 💡'+r.hints:''}</b></div>`).join('')}
-let adminOpen=false,clearOn=true,lastQ='';
+let adminOpen=false,clearOn=true,lastQ='',skew=0,autoFired='',autoOn=true;
+function tick(){
+ if(!game||game.state!=='question'||!game.q_started_at)return;
+ const q=Q.find(x=>x.id===game.current_q);if(!q)return;
+ const el=(Date.now()-skew-new Date(game.q_started_at))/1000;
+ const t=document.getElementById('ht');if(t)t.textContent=Math.max(0,Math.ceil(q.seconds-el));
+ if(autoOn&&pin&&el>=q.seconds+2&&autoFired!==game.q_started_at){autoFired=game.q_started_at;set('results',game.current_q)}
+}
 function useHint(){}
 function groups(){const g=[];Q.forEach(q=>{const k=/Warsztat \d\/3/.test(q.mission)?'🎮 Warsztat: kabelki i wyświetlacz':q.mission;const l=g[g.length-1];if(l&&l.name===k)l.qs.push(q.id);else g.push({name:k,qs:[q.id]})});return g}
 async function jump(q){if(q==null)return;if(clearOn)await sb.rpc('host_clear_q',{p_pin:pin,p_q:q});await set('question',q)}
@@ -59,7 +67,7 @@ function adminPanel(){const G=groups(),n=game.current_q,st=game.state,gi=G.findI
  const rows=G.map((g,i)=>`<div style="margin:8px 0"><div class="mut" style="font-size:.8em">${i+1}. ${esc(g.name)}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${g.qs.map(q=>`<button style="padding:6px 12px;${q===n&&st!=='lobby'?'':'background:transparent;color:var(--txt)'}" onclick="jump(${q})">${q}</button>`).join('')}</div></div>`).join('');
  return `<details class="card" ${adminOpen?'open':''} ontoggle="adminOpen=this.open"><summary>🧭 Panel admina – skocz do etapu</summary>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">${nav('⏮ Poczekalnia',"set('lobby',0)")}${nav('◀ Poprzedni etap',`jump(${G[gi-1]?.qs[0]})`,gi<1)}${nav('Następny etap ▶',`jump(${G[gi+1]?.qs[0]})`,gi>=G.length-1)}${nav('🏁 Ranking końcowy',`set('final',${Q.length})`)}</div>
- <label class="mut"><input type="checkbox" ${clearOn?'checked':''} onchange="clearOn=this.checked"> Przy skoku wyczyść odpowiedzi i punkty z tego pytania (do testów)</label>${rows}</details>`}
+ <label class="mut"><input type="checkbox" ${clearOn?'checked':''} onchange="clearOn=this.checked"> Przy skoku wyczyść odpowiedzi i punkty z tego pytania (do testów)</label><br><label class="mut"><input type="checkbox" ${autoOn?'checked':''} onchange="autoOn=this.checked"> Automatyczne sprawdzanie po upływie czasu</label>${rows}</details>`}
 function draw(){
   if(!pin){$.innerHTML=`<div class="card"><h1>Panel prowadzącego</h1><input id="p" type="password" placeholder="PIN"> <button onclick="login()">Wejdź</button></div>`;return}
   if(!game)return;
@@ -70,7 +78,7 @@ function draw(){
     <p class="mut">${esc(joinUrl)}</p><p class="big acc">${rows.length} / 37 graczy</p><p>${rows.map(r=>esc(r.nick)).join(' · ')}</p></div>`;
     btn=`<button onclick="set('question',1)">▶ Start – pytanie 1</button>`}
   else if(st==='question'){
-    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length}</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}${hintHTML(Qq)}
+    main=`<div class="card"><div class="mut">${esc(Qq.mission)} · ${n}/${Q.length} · ⏱ <b id="ht"></b> s</div><h1>${esc(Qq.prompt)}</h1>${Qq.extra?.[0]==='svg'?segSVG(Qq.extra[1]):''}${hintHTML(Qq)}
     ${Qq.kind==='wire'?wireHTML(Qq,[],null,0):`<div class="opts">${Qq.options.map((o,i)=>`<button class="o${i}" disabled>${esc(o)}</button>`).join('')}</div>`}
     ${Qq.kind==='match'?'<p class="big">'+esc(Qq.extra.join('  ·  '))+'</p>':''}<p class="big acc">Odpowiedzi: ${cnt} / ${rows.length}</p><div class="bar" style="width:${rows.length?cnt/rows.length*100:0}%"></div></div>`;
     btn=`<button onclick="set('results',${n})">⏹ Pokaż odpowiedź</button>`}
@@ -85,5 +93,5 @@ function draw(){
   $.innerHTML+=adminPanel();
   const qr=document.getElementById('qr');if(qr)new QRCode(qr,{text:joinUrl,width:240,height:240});
 }
-(async()=>{Q=(await sb.from('questions').select('*').order('id')).data||[];await poll();draw();setInterval(poll,1500)})();
+(async()=>{Q=(await sb.from('questions').select('*').order('id')).data||[];await poll();draw();setInterval(poll,1500);setInterval(tick,250)})();
 </script></body></html>
