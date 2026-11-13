@@ -9,7 +9,7 @@ const $=document.getElementById('app');
 let sentAt={},seq=[],ms=[],mp=[],wr=[],wl=0;
 let pid=localStorage.pid||null,nick=localStorage.nick||'',game,Q=[],key='',sent={};
 const hintUsed=new Set(JSON.parse(localStorage['hu_'+pid]||'[]'));
-function useHint(){const q=game.current_q;if(!pid||hintUsed.has(q))return;hintUsed.add(q);localStorage['hu_'+pid]=JSON.stringify([...hintUsed]);sb.rpc('use_hint',{p_player:pid,p_q:q})}
+function useHint(){const q=game.current_q;if(!pid||hintUsed.has(q))return;hintUsed.add(q);localStorage['hu_'+pid]=JSON.stringify([...hintUsed]);sb.rpc('use_hint',{p_player:pid,p_q:q}).then(()=>{})}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function init(){
   if(pid){const r=await sb.rpc('player_exists',{p_player:pid});if(r.data===false){pid=null;hintUsed.clear();delete localStorage.pid}}
@@ -99,8 +99,9 @@ async function draw(){
     <p>Poprawna: <b class="acc">${esc(ctext(Qq,c.data))}</b></p><p class="big acc">+${my.points||0} pkt</p>${Qq.kind==='seg'?segSVG(c.data,Qq.options.length/8,Qq.extra?.[0]==='anode'):''}${Qq.kind==='wire'?wireHTML(Qq,String(c.data).split('').map(x=>x-1),null,0):''}<p class="mut" style="text-align:left">${esc(ex.data||'')}</p>
     <p>Masz <b>${me?me.score:0}</b> pkt · miejsce <b>${rank||'-'}</b> z ${rows.length}</p></div>`;return}
   if(st==='final'){
+    await Promise.all([...hintUsed].map(q=>sb.rpc('use_hint',{p_player:pid,p_q:q})));
     const rows=(await sb.from('leaderboard').select('*')).data||[],rank=rows.findIndex(r=>r.nick===nick)+1,sm=await sb.rpc('final_summary');
-    $.innerHTML=`<div class="card" style="text-align:center"><h1>🏁 Koniec gry!</h1><p class="big acc">Miejsce ${rank||'-'}</p><p>${rows[rank-1]?.score||0} pkt</p><p>💡 Użyte podpowiedzi: <b>${rows[rank-1]?.hints??hintUsed.size}</b></p></div>`+summaryHTML(Q,sm.data)}
+    $.innerHTML=`<div class="card" style="text-align:center"><h1>🏁 Koniec gry!</h1><p class="big acc">Miejsce ${rank||'-'}</p><p>${rows[rank-1]?.score||0} pkt</p><p>💡 Użyte podpowiedzi: <b>${Math.max(rows[rank-1]?.hints||0,hintUsed.size)}</b></p></div>`+summaryHTML(Q,sm.data)}
 }
 function tick(){
   const t=document.getElementById('t');if(!t||!game.q_started_at||!q())return;

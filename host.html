@@ -42,7 +42,7 @@ async function poll(){
   rows=(await sb.from('leaderboard').select('*')).data||[];
   if(game?.state==='question')cnt=(await sb.rpc('answer_count',{p_q:game.current_q})).data||0;
   const qk=game.state+game.current_q;if(qk!==lastQ){lastQ=qk;hintOpen=false}
-  const k=game.state+game.current_q+rows.length+cnt+rows.map(r=>r.score).join();
+  const k=game.state+game.current_q+rows.length+rows.map(r=>r.hints).join('')+cnt+rows.map(r=>r.score).join();
   if(k!==key){key=k;draw()}
 }
 function login(){pin=document.getElementById('p').value;sessionStorage.pin=pin;draw()}
